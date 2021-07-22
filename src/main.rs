@@ -55,27 +55,21 @@ fn windows_specific_opacity() {
     let _ = unsafe { DwmEnableBlurBehindWindow(hwnd, &bb) };
 }
 
-fn maybe_move(movement: &Movement, elements: &Vec<UiBoundingBox>) -> Option<PointWithDistance> {
-    let filtered_bounding_box: Vec<UiBoundingBox> =
-        filter_by_angle(&movement, elements.clone(), 60.0);
-    find_nearest_ui_element(&movement, &filtered_bounding_box)
-}
-
 pub fn main() {
     unsafe { SDL_Init(SDL_INIT_EVERYTHING) };
     let file = File::open("src/data.json").unwrap();
 
     let bounding_boxes: Vec<UiBoundingBox> = serde_json::from_reader(file).unwrap();
-    let mut selected_element_position: Movement = Movement {
+    let mut current_position: Movement = Movement {
         p1: Point { x: 0.0, y: 0.0 },
-        p2: Point { x: 50.0, y: 0.0 },
+        p2: Point { x: 1.0, y: 1.0 },
     };
 
     let mut filtered_bounding_box: Vec<UiBoundingBox> =
-        filter_by_angle(&selected_element_position, bounding_boxes.clone(), 60.0);
+        filter_by_angle(&current_position, bounding_boxes.clone(), 45.0);
 
     let mut selected_bounding_box =
-        find_nearest_ui_element(&selected_element_position, &filtered_bounding_box);
+        find_nearest_ui_element(&current_position, &filtered_bounding_box);
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -127,33 +121,65 @@ pub fn main() {
                 } => {
                     if mouse_btn == MouseButton::Left {
                         ui_dirty = true;
-                        selected_element_position.p1.x = x as f32;
-                        selected_element_position.p1.y = y as f32;
+                        current_position.p1.x = x as f32;
+                        current_position.p1.y = y as f32;
                     }
 
                     if mouse_btn == MouseButton::Right {
                         ui_dirty = true;
-                        selected_element_position.p2.x = x as f32;
-                        selected_element_position.p2.y = y as f32;
+                        current_position.p2.x = x as f32;
+                        current_position.p2.y = y as f32;
                     }
                 }
 
                 Event::KeyDown { keycode, .. } => match keycode {
                     Some(Keycode::Right) => {
+                        println!(
+                            "Current pos [{} {}]",
+                            current_position.p1.x, current_position.p1.y
+                        );
                         ui_dirty = true;
-                        selected_element_position.p2.x = selected_element_position.p1.x + 10.0;
+                        current_position.p2.x = current_position.p1.x + 10.0;
+                        println!(
+                            "Mov pos [{} {}]",
+                            current_position.p2.x, current_position.p2.y
+                        );
                     }
                     Some(Keycode::Left) => {
+                        println!(
+                            "Current pos [{} {}]",
+                            current_position.p1.x, current_position.p1.y
+                        );
                         ui_dirty = true;
-                        selected_element_position.p2.x = selected_element_position.p1.x - 10.0;
+                        current_position.p2.x = current_position.p1.x - 10.0;
+                        println!(
+                            "Mov pos [{} {}]",
+                            current_position.p2.x, current_position.p2.y
+                        );
                     }
                     Some(Keycode::Down) => {
+                        println!(
+                            "Current pos [{} {}]",
+                            current_position.p1.x, current_position.p1.y
+                        );
                         ui_dirty = true;
-                        selected_element_position.p2.y = selected_element_position.p1.y + 10.0;
+                        current_position.p2.y = current_position.p1.y + 10.0;
+                        println!(
+                            "Mov pos [{} {}]",
+                            current_position.p2.x, current_position.p2.y
+                        );
                     }
                     Some(Keycode::Up) => {
+                        println!(
+                            "Current pos [{} {}]",
+                            current_position.p1.x, current_position.p1.y
+                        );
                         ui_dirty = true;
-                        selected_element_position.p2.y = selected_element_position.p1.y - 10.0;
+                        current_position.p2.y = current_position.p1.y - 10.0;
+                        println!(
+                            "Mov pos [{} {}]",
+                            current_position.p2.x, current_position.p2.y
+                        );
                     }
 
                     _ => (),
@@ -163,13 +189,15 @@ pub fn main() {
         }
 
         if ui_dirty {
+            println!("{} elements left", filtered_bounding_box.len());
             filtered_bounding_box =
-                filter_by_angle(&selected_element_position, bounding_boxes.clone(), 90.0);
+                filter_by_angle(&current_position, bounding_boxes.clone(), 45.0);
+            println!("{} elements left", filtered_bounding_box.len());
 
-            match find_nearest_ui_element(&selected_element_position, &filtered_bounding_box) {
+            match find_nearest_ui_element(&current_position, &filtered_bounding_box) {
                 Some(nearest_element) => {
-                    selected_element_position.p1 = nearest_element.p;
-                    selected_element_position.p2 = nearest_element.p;
+                    current_position.p1 = nearest_element.p;
+                    current_position.p2 = nearest_element.p;
                     selected_bounding_box = Some(nearest_element);
                 }
                 None => (),
@@ -215,14 +243,8 @@ pub fn main() {
         // Movement
         canvas.set_draw_color(Color::YELLOW);
         let _ = canvas.draw_line(
-            SdlPoint::new(
-                selected_element_position.p1.x as i32,
-                selected_element_position.p1.y as i32,
-            ),
-            SdlPoint::new(
-                selected_element_position.p2.x as i32,
-                selected_element_position.p2.y as i32,
-            ),
+            SdlPoint::new(current_position.p1.x as i32, current_position.p1.y as i32),
+            SdlPoint::new(current_position.p2.x as i32, current_position.p2.y as i32),
         );
 
         canvas.present();

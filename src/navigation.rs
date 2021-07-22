@@ -52,9 +52,13 @@ pub fn filter_by_angle(
 ) -> Vec<UiBoundingBox> {
     let x2: f64 = (movement.p2.x - movement.p1.x) as f64;
     let y2: f64 = (movement.p2.y - movement.p1.y) as f64;
-    let target_angle = y2.atan2(x2);
+    let target_angle: f64 = y2.atan2(x2);
+    println!(
+        "---------target angle {}-------------",
+        target_angle.to_degrees()
+    );
 
-    let total_angle_scope: f64 = 45f64.to_radians();
+    let total_angle_scope: f64 = angle.to_radians();
     let half_angle_scope: f64 = total_angle_scope / 2.0;
     let min_scope_angle: f64 = target_angle - half_angle_scope;
     let max_scope_angle: f64 = target_angle + half_angle_scope;
@@ -62,10 +66,35 @@ pub fn filter_by_angle(
     bounding_boxes
         .into_iter()
         .filter(|bounding_box| {
-            let x: f64 = (bounding_box.x - movement.p1.x) as f64;
-            let y: f64 = (bounding_box.y - movement.p1.y) as f64;
+            let box_center = find_center_of_bounding_box(&bounding_box);
+
+            if movement.p1.x == box_center.x && movement.p1.y == box_center.y {
+                return false;
+            }
+
+            let x: f64 = (box_center.x - movement.p1.x) as f64;
+            let y: f64 = (box_center.y - movement.p1.y) as f64;
+            println!(
+                "----box [{} {}] mov [{} {}] me [{} {}]",
+                box_center.x,
+                box_center.y,
+                movement.p2.x,
+                movement.p2.y,
+                movement.p1.x,
+                movement.p1.y
+            );
             let bounding_box_angle = y.atan2(x);
 
+            println!(
+                "    my_angle {} bounds [{} {}]",
+                bounding_box_angle.to_degrees(),
+                min_scope_angle.to_degrees(),
+                max_scope_angle.to_degrees()
+            );
+            println!(
+                "can goto {}",
+                bounding_box_angle >= min_scope_angle && bounding_box_angle <= max_scope_angle
+            );
             return bounding_box_angle >= min_scope_angle && bounding_box_angle <= max_scope_angle;
         })
         .collect()
