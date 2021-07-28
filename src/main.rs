@@ -16,7 +16,6 @@ extern crate sdl2;
 
 mod app;
 mod navigation;
-mod point;
 mod ui_bounding_box;
 fn windows_specific_opacity() {
     let hwnd = unsafe { GetActiveWindow() };

@@ -5,7 +5,7 @@ use sdl2::{
     keyboard::Keycode,
     mouse::MouseButton,
     pixels::Color,
-    rect::Point as SdlPoint,
+    rect::{Point as SdlPoint, Rect},
     render::Canvas,
     sys::{
         SDL_GameControllerName, SDL_GameControllerOpen, SDL_Init, SDL_IsGameController,
@@ -15,12 +15,15 @@ use sdl2::{
     EventPump,
 };
 
-use crate::{navigation::Movement, point::Point, ui_bounding_box::UiBoundingBox};
+use crate::{
+    navigation::{Movement, Position},
+    ui_bounding_box::UiBoundingBox,
+};
 
 pub struct State {
     id: u8,
     elements: Vec<UiBoundingBox>,
-    selected: Point,
+    selected: Position,
 }
 
 impl Default for State {
@@ -28,7 +31,7 @@ impl Default for State {
         State {
             id: 0,
             elements: vec![],
-            selected: Point { x: 0.0, y: 0.0 },
+            selected: Position { x: 0.0, y: 0.0 },
         }
     }
 }
@@ -37,24 +40,22 @@ pub struct App {
     current_state: u8,
     states: Vec<State>,
     ui_dirty: bool,
-    current_position: Movement,
+    current_position: Position,
     background_color: Color,
+    bounding_boxes: Vec<UiBoundingBox>,
+    selected_bounding_box: Option<UiBoundingBox>,
 }
 
 const movement_length: f32 = 100.0;
+const scope_angle_degree: f64 = 160.0;
 
 impl App {
     pub fn new(states: Vec<State>) -> Self {
-        let scope_angle_degree = 160.0;
-
         unsafe { SDL_Init(SDL_INIT_EVERYTHING) };
         let file = File::open("src/data.json").unwrap();
 
         let mut bounding_boxes: Vec<UiBoundingBox> = serde_json::from_reader(file).unwrap();
-        let mut current_position: Movement = Movement {
-            p1: Point { x: 0.0, y: 0.0 },
-            p2: Point { x: 1.0, y: 1.0 },
-        };
+        let mut current_position: Position = Position::new(0.0, 0.0);
 
         let background_color = Color::RGBA(0, 0, 0, 255);
         let mut i = 0;
@@ -79,6 +80,8 @@ impl App {
             ui_dirty,
             current_position,
             background_color,
+            bounding_boxes,
+            selected_bounding_box: None,
         }
     }
 
@@ -89,69 +92,10 @@ impl App {
     fn handle_mouse_event(&mut self, mouse_btn: MouseButton, x: i32, y: i32) {
         if mouse_btn == MouseButton::Left {
             self.ui_dirty = true;
-            self.current_position.p1.x = x as f32;
-            self.current_position.p1.y = y as f32;
-        }
-
-        if mouse_btn == MouseButton::Right {
-            self.ui_dirty = true;
-            self.current_position.p2.x = x as f32;
-            self.current_position.p2.y = y as f32;
+            self.current_position.x = x as f32;
+            self.current_position.y = y as f32;
         }
     }
-
-    fn handle_move_right(&mut self) {
-        println!(
-            "Current pos [{} {}]",
-            self.current_position.p1.x, self.current_position.p1.y
-        );
-        self.ui_dirty = true;
-        self.current_position.p2.x = self.current_position.p1.x + movement_length;
-        println!(
-            "Mov pos [{} {}]",
-            self.current_position.p2.x, self.current_position.p2.y
-        );
-    }
-
-    fn handle_move_left(&mut self) {
-        println!(
-            "Current pos [{} {}]",
-            self.current_position.p1.x, self.current_position.p1.y
-        );
-        self.ui_dirty = true;
-        self.current_position.p2.x = self.current_position.p1.x - movement_length;
-        println!(
-            "Mov pos [{} {}]",
-            self.current_position.p2.x, self.current_position.p2.y
-        );
-    }
-
-    fn handle_move_up(&mut self) {
-        println!(
-            "Current pos [{} {}]",
-            self.current_position.p1.x, self.current_position.p1.y
-        );
-        self.ui_dirty = true;
-        self.current_position.p2.y = self.current_position.p1.y - movement_length;
-        println!(
-            "Mov pos [{} {}]",
-            self.current_position.p2.x, self.current_position.p2.y
-        );
-    }
-
-    fn handle_move_down(&mut self) {
-        println!(
-            "Current pos [{} {}]",
-            self.current_position.p1.x, self.current_position.p1.y
-        );
-        self.ui_dirty = true;
-        self.current_position.p2.y = self.current_position.p1.y + movement_length;
-        println!(
-            "Mov pos [{} {}]",
-            self.current_position.p2.x, self.current_position.p2.y
-        );
-    }
-
     pub fn run(&mut self) {
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
@@ -166,6 +110,7 @@ impl App {
 
         let mut canvas = window.into_canvas().build().unwrap();
         let mut event_pump = sdl_context.event_pump().unwrap();
+        let mut movement: Option<Movement> = None;
         'running: loop {
             for event in event_pump.poll_iter() {
                 match event {
@@ -188,16 +133,52 @@ impl App {
                     Event::KeyDown { keycode, .. } => match keycode {
                         Some(Keycode::R) => {}
                         Some(Keycode::Right) => {
-                            self.handle_move_right();
+                            let try_position = Position {
+                                x: self.current_position.x + movement_length,
+                                y: self.current_position.y,
+                            };
+                            movement = Movement::maybe_new(
+                                self.current_position,
+                                try_position,
+                                self.bounding_boxes.clone(),
+                                scope_angle_degree,
+                            )
                         }
                         Some(Keycode::Left) => {
-                            self.handle_move_left();
+                            let try_position = Position {
+                                x: self.current_position.x - movement_length,
+                                y: self.current_position.y,
+                            };
+                            movement = Movement::maybe_new(
+                                self.current_position,
+                                try_position,
+                                self.bounding_boxes.clone(),
+                                scope_angle_degree,
+                            )
                         }
                         Some(Keycode::Down) => {
-                            self.handle_move_down();
+                            let try_position = Position {
+                                x: self.current_position.x,
+                                y: self.current_position.y + movement_length,
+                            };
+                            movement = Movement::maybe_new(
+                                self.current_position,
+                                try_position,
+                                self.bounding_boxes.clone(),
+                                scope_angle_degree,
+                            )
                         }
                         Some(Keycode::Up) => {
-                            self.handle_move_up();
+                            let try_position = Position {
+                                x: self.current_position.x,
+                                y: self.current_position.y - movement_length,
+                            };
+                            movement = Movement::maybe_new(
+                                self.current_position,
+                                try_position,
+                                self.bounding_boxes.clone(),
+                                scope_angle_degree,
+                            )
                         }
                         _ => (),
                     },
@@ -205,54 +186,43 @@ impl App {
                 }
             }
 
-            if self.ui_dirty {
-                // match find_nearest_ui_element(&self.current_position, &filtered_bounding_box) {
-                //     Some(nearest_element) => {
-                //         self.current_position.p1 = nearest_element.p;
-                //         self.current_position.p2 = nearest_element.p;
-                //         selected_bounding_box = Some(nearest_element);
-                //     }
-                //     None => (),
-                // };
-            }
-
             canvas.set_draw_color(self.background_color);
             canvas.clear();
 
             // All UI elements
             canvas.set_draw_color(Color::GRAY);
-            // for bounding_box in &bounding_boxes {
-            //     let _ = canvas.draw_rect(Rect::new(
-            //         bounding_box.x as i32,
-            //         bounding_box.y as i32,
-            //         bounding_box.w as u32,
-            //         bounding_box.h as u32,
-            //     ));
-            // }
+            for bounding_box in &self.bounding_boxes {
+                let _ = canvas.draw_rect(Rect::new(
+                    bounding_box.x as i32,
+                    bounding_box.y as i32,
+                    bounding_box.w as u32,
+                    bounding_box.h as u32,
+                ));
+            }
 
             // Current UI element
             canvas.set_draw_color(Color::GREEN);
-            // if let Some(selected_element) = &selected_bounding_box {
-            //     let _ = canvas.draw_rect(Rect::new(
-            //         selected_element.bounding_box.x as i32,
-            //         selected_element.bounding_box.y as i32,
-            //         selected_element.bounding_box.w as u32,
-            //         selected_element.bounding_box.h as u32,
-            //     ));
-            // }
+            if let Some(mov) = &movement {
+                let old_position = self.current_position;
+                self.current_position = mov.new_position;
+                self.selected_bounding_box = mov.select_bounding_box;
+                if let Some(selected_bounding_box) = mov.select_bounding_box {
+                    let _ = canvas.draw_rect(Rect::new(
+                        selected_bounding_box.x as i32,
+                        selected_bounding_box.y as i32,
+                        selected_bounding_box.w as u32,
+                        selected_bounding_box.h as u32,
+                    ));
+                }
+
+                canvas.set_draw_color(Color::YELLOW);
+                let _ = canvas.draw_line(
+                    SdlPoint::new(old_position.x as i32, old_position.y as i32),
+                    SdlPoint::new(mov.new_position.x as i32, mov.new_position.y as i32),
+                );
+            }
 
             // Movement
-            canvas.set_draw_color(Color::YELLOW);
-            let _ = canvas.draw_line(
-                SdlPoint::new(
-                    self.current_position.p1.x as i32,
-                    self.current_position.p1.y as i32,
-                ),
-                SdlPoint::new(
-                    self.current_position.p2.x as i32,
-                    self.current_position.p2.y as i32,
-                ),
-            );
 
             canvas.present();
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
