@@ -3,23 +3,21 @@ use std::cmp::Ordering;
 use serde::{Deserialize, Serialize};
 use serde_json::{Result, Value};
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct UiBoundingBox {
-    pub x: f32,
-    pub y: f32,
-    pub w: f32,
-    pub h: f32,
-}
-
-#[derive(Clone, Copy)]
-pub struct Point {
-    pub x: f32,
-    pub y: f32,
-}
+use crate::{point::Point, ui_bounding_box::UiBoundingBox};
 
 pub struct Movement {
     pub p1: Point,
     pub p2: Point,
+}
+
+pub struct Position {
+    pub value: Point,
+}
+
+impl Position {
+    pub fn move_to(&mut self, new_position: Position) {
+        self.value = new_position.value;
+    }
 }
 
 pub struct PointWithDistance {
