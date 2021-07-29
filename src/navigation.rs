@@ -9,6 +9,7 @@ pub struct Movement {
     pub current_position: Position,
     pub new_position: Position,
     pub select_bounding_box: Option<UiBoundingBox>,
+    pub angle: f64,
 }
 
 impl Movement {
@@ -16,44 +17,57 @@ impl Movement {
         current_position: Position,
         new_position: Position,
         bounding_boxes: Vec<UiBoundingBox>,
-        angle: f64,
+        scope_angle: f64,
     ) -> Option<Movement> {
+        let x2: f64 = (new_position.x - current_position.x) as f64;
+        let y2: f64 = (new_position.y - current_position.y) as f64;
+        let angle: f64 = y2.atan2(x2);
         let movement = Movement {
             current_position,
             new_position,
             select_bounding_box: None,
+            angle,
         };
 
-        let filtered_bounding_box = movement.filter_by_angle(bounding_boxes, angle);
-        let nearest_element_result = movement.find_nearest_ui_element(&filtered_bounding_box);
-        let movement_output = match nearest_element_result {
-            Some(nearest_element_result) => Some(Movement {
-                current_position,
-                new_position: nearest_element_result.p,
-                select_bounding_box: Some(nearest_element_result.bounding_box),
-            }),
-            None => None,
-        };
-        movement_output
+        let filtered_bounding_box = movement.filter_by_angle(bounding_boxes, scope_angle);
+        if filtered_bounding_box.len() > 0 {
+            println!("Count: {}", filtered_bounding_box.len());
+            let nearest_element_result = movement.find_nearest_ui_element(&filtered_bounding_box);
+            let movement_output = match nearest_element_result {
+                Some(nearest_element_result) => Some(Movement {
+                    current_position,
+                    new_position: nearest_element_result.p,
+                    select_bounding_box: Some(nearest_element_result.bounding_box),
+                    angle,
+                }),
+                None => None,
+            };
+            return movement_output;
+        }
+        None
     }
 
     fn filter_by_angle(
         &self,
         bounding_boxes: Vec<UiBoundingBox>,
-        angle: f64,
+        scope_angle: f64,
     ) -> Vec<UiBoundingBox> {
-        let x2: f64 = (self.new_position.x - self.current_position.x) as f64;
-        let y2: f64 = (self.new_position.y - self.current_position.y) as f64;
-        let target_angle: f64 = y2.atan2(x2);
         println!(
             "---------target angle {}-------------",
-            target_angle.to_degrees()
+            self.angle.to_degrees()
         );
 
-        let total_angle_scope: f64 = angle.to_radians();
+        let total_angle_scope: f64 = scope_angle.to_radians();
         let half_angle_scope: f64 = total_angle_scope / 2.0;
-        let min_scope_angle: f64 = target_angle - half_angle_scope;
-        let max_scope_angle: f64 = target_angle + half_angle_scope;
+        let mut min_scope_angle: f64 = self.angle - half_angle_scope;
+        let mut max_scope_angle: f64 = self.angle + half_angle_scope;
+        // if min_scope_angle < 0.0 {
+        //     min_scope_angle += 360.0;
+        // }
+
+        // if max_scope_angle < 0.0 {
+        //     max_scope_angle += 360.0;
+        // }
 
         bounding_boxes
             .into_iter()
@@ -69,7 +83,8 @@ impl Movement {
                 let x: f64 = (box_center.x - self.current_position.x) as f64;
                 let y: f64 = (box_center.y - self.current_position.y) as f64;
                 println!(
-                    "----box [{} {}] mov [{} {}] me [{} {}]",
+                    "----box({}) [{} {}] mov [{} {}] me [{} {}]",
+                    bounding_box.id,
                     box_center.x,
                     box_center.y,
                     self.new_position.x,
@@ -102,11 +117,21 @@ impl Movement {
         elements
             .iter()
             .map(|bounding_box| {
-                let p: Position = find_center_of_bounding_box(&bounding_box);
+                let test_bounding_box_position: Position =
+                    find_center_of_bounding_box(&bounding_box);
                 let distance: f64 =
-                    distance_two_positions(&self.current_position, &self.new_position);
+                    distance_two_positions(&self.new_position, &test_bounding_box_position);
+                println!(
+                    "[{}, {}] point: {} is {} away from point [{},{}]",
+                    self.new_position.x,
+                    self.new_position.y,
+                    bounding_box.id,
+                    distance,
+                    test_bounding_box_position.x,
+                    test_bounding_box_position.y
+                );
                 NearestElementResult {
-                    p,
+                    p: test_bounding_box_position,
                     distance,
                     bounding_box: bounding_box.clone(),
                 }
@@ -130,11 +155,6 @@ impl Position {
     pub fn new(x: f32, y: f32) -> Self {
         Position { x, y }
     }
-
-    pub fn move_to(&mut self, new_position: Position) {
-        self.x = new_position.x;
-        self.y = new_position.y;
-    }
 }
 
 pub struct NearestElementResult {
@@ -151,5 +171,5 @@ pub fn find_center_of_bounding_box(bounding_box: &UiBoundingBox) -> Position {
 }
 
 pub fn distance_two_positions(p1: &Position, p2: &Position) -> f64 {
-    (((p2.x - p1.x).powi(2) + (p2.y - p1.y)) as f64).sqrt()
+    ((p2.x - p1.x).powi(2) + (p2.y - p1.y).powi(2)).sqrt() as f64
 }

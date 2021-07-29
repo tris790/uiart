@@ -48,6 +48,7 @@ pub struct App {
 
 const movement_length: f32 = 100.0;
 const scope_angle_degree: f64 = 160.0;
+const half_scope_angle_degree: f64 = scope_angle_degree / 2.0;
 
 impl App {
     pub fn new(states: Vec<State>) -> Self {
@@ -89,19 +90,12 @@ impl App {
         self.current_state = new_state;
     }
 
-    fn handle_mouse_event(&mut self, mouse_btn: MouseButton, x: i32, y: i32) {
-        if mouse_btn == MouseButton::Left {
-            self.ui_dirty = true;
-            self.current_position.x = x as f32;
-            self.current_position.y = y as f32;
-        }
-    }
     pub fn run(&mut self) {
         let sdl_context = sdl2::init().unwrap();
         let video_subsystem = sdl_context.video().unwrap();
 
         let window = video_subsystem
-            .window("UIart", 1280, 800)
+            .window("uiart", 1280, 800)
             .position_centered()
             .resizable()
             .vulkan()
@@ -110,8 +104,11 @@ impl App {
 
         let mut canvas = window.into_canvas().build().unwrap();
         let mut event_pump = sdl_context.event_pump().unwrap();
-        let mut movement: Option<Movement> = None;
+        let mut last_angle: Option<f64> = None;
+        let mut last_position: Option<Position> = None;
         'running: loop {
+            let mut movement: Option<Movement> = None;
+
             for event in event_pump.poll_iter() {
                 match event {
                     Event::Quit { .. }
@@ -127,7 +124,16 @@ impl App {
                     Event::MouseButtonDown {
                         mouse_btn, x, y, ..
                     } => {
-                        self.handle_mouse_event(mouse_btn, x, y);
+                        let try_position = Position {
+                            x: x as f32,
+                            y: y as f32,
+                        };
+                        movement = Movement::maybe_new(
+                            self.current_position,
+                            try_position,
+                            self.bounding_boxes.clone(),
+                            scope_angle_degree,
+                        )
                     }
 
                     Event::KeyDown { keycode, .. } => match keycode {
@@ -201,19 +207,13 @@ impl App {
             }
 
             // Current UI element
-            canvas.set_draw_color(Color::GREEN);
             if let Some(mov) = &movement {
+                last_angle = Some(mov.angle);
+                last_position = Some(mov.current_position);
+
                 let old_position = self.current_position;
                 self.current_position = mov.new_position;
                 self.selected_bounding_box = mov.select_bounding_box;
-                if let Some(selected_bounding_box) = mov.select_bounding_box {
-                    let _ = canvas.draw_rect(Rect::new(
-                        selected_bounding_box.x as i32,
-                        selected_bounding_box.y as i32,
-                        selected_bounding_box.w as u32,
-                        selected_bounding_box.h as u32,
-                    ));
-                }
 
                 canvas.set_draw_color(Color::YELLOW);
                 let _ = canvas.draw_line(
@@ -222,7 +222,37 @@ impl App {
                 );
             }
 
-            // Movement
+            if let Some(position) = last_position {
+                if let Some(angle) = last_angle {
+                    canvas.set_draw_color(Color::BLUE);
+                    let angle1_position = Position {
+                        x: position.x - (2000.0 * (angle - half_scope_angle_degree).cos() as f32),
+                        y: position.y - (2000.0 * (angle - half_scope_angle_degree).sin() as f32),
+                    };
+                    let angle2_position = Position {
+                        x: position.x - (2000.0 * (angle + half_scope_angle_degree).cos() as f32),
+                        y: position.y - (2000.0 * (angle + half_scope_angle_degree).sin() as f32),
+                    };
+                    let _ = canvas.draw_line(
+                        SdlPoint::new(position.x as i32, position.y as i32),
+                        SdlPoint::new(angle1_position.x as i32, angle1_position.y as i32),
+                    );
+                    let _ = canvas.draw_line(
+                        SdlPoint::new(position.x as i32, position.y as i32),
+                        SdlPoint::new(angle2_position.x as i32, angle2_position.y as i32),
+                    );
+                }
+            }
+
+            canvas.set_draw_color(Color::GREEN);
+            if let Some(selected_bounding_box) = self.selected_bounding_box {
+                let _ = canvas.draw_rect(Rect::new(
+                    selected_bounding_box.x as i32,
+                    selected_bounding_box.y as i32,
+                    selected_bounding_box.w as u32,
+                    selected_bounding_box.h as u32,
+                ));
+            }
 
             canvas.present();
             ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));

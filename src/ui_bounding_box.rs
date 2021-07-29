@@ -6,4 +6,5 @@ pub struct UiBoundingBox {
     pub y: f32,
     pub w: f32,
     pub h: f32,
+    pub id: i32,
 }
