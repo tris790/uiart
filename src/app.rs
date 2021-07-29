@@ -93,7 +93,7 @@ fn windows_specific_opacity() {
     let _ = unsafe { DwmEnableBlurBehindWindow(hwnd, &bb) };
 }
 
-fn enable_transparency() {
+fn enable_overlay() {
     let hwnd = unsafe { GetActiveWindow() };
     let GWL_EXSTYLE = WINDOW_LONG_PTR_INDEX::from(-20);
     let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
@@ -188,7 +188,7 @@ impl App {
         let mut event_pump = sdl_context.event_pump().unwrap();
         let mut last_angle: Option<f64> = None;
         let mut last_position: Option<Position> = None;
-        enable_transparency();
+        enable_overlay();
 
         'running: loop {
             let mut movement: Option<Movement> = None;
