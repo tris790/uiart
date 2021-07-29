@@ -8,11 +8,25 @@ use sdl2::{
     rect::{Point as SdlPoint, Rect},
     render::Canvas,
     sys::{
-        SDL_GameControllerName, SDL_GameControllerOpen, SDL_Init, SDL_IsGameController,
-        SDL_NumJoysticks, SDL_bool, SDL_INIT_EVERYTHING,
+        SDL_CreateShapedWindow, SDL_GameControllerName, SDL_GameControllerOpen, SDL_Init,
+        SDL_IsGameController, SDL_NumJoysticks, SDL_bool, SDL_INIT_EVERYTHING,
     },
     video::Window,
     EventPump,
+};
+use windows_bindings::{
+    Windows::Win32::Foundation::BOOL,
+    Windows::Win32::Graphics::Dwm::DwmEnableBlurBehindWindow,
+    Windows::Win32::Graphics::Dwm::DWM_BLURBEHIND,
+    Windows::Win32::UI::KeyboardAndMouseInput::GetActiveWindow,
+    Windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes,
+    Windows::Win32::UI::WindowsAndMessaging::SetWindowPos,
+    Windows::Win32::UI::WindowsAndMessaging::LAYERED_WINDOW_ATTRIBUTES_FLAGS,
+    Windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, SetWindowLongPtrW},
+    Windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::SET_WINDOW_POS_FLAGS},
+    Windows::Win32::{
+        Graphics::Gdi::CreateRectRgn, UI::WindowsAndMessaging::WINDOW_LONG_PTR_INDEX,
+    },
 };
 
 use crate::{
@@ -46,19 +60,86 @@ pub struct App {
     selected_bounding_box: Option<UiBoundingBox>,
 }
 
-const movement_length: f32 = 100.0;
+const movement_length: f32 = 20.0;
 const scope_angle_degree: f64 = 160.0;
 const half_scope_angle_degree: f64 = scope_angle_degree / 2.0;
+
+fn windows_specific_opacity() {
+    let hwnd = unsafe { GetActiveWindow() };
+
+    let style_index = WINDOW_LONG_PTR_INDEX::from(-16);
+    let style = unsafe { GetWindowLongPtrW(hwnd, style_index) };
+    let overlapped_window: isize = 0x00C00000 | 0x00080000 | 0x00040000 | 0x00020000 | 0x00010000;
+    let popup: isize = 0x80000000;
+
+    let composited: isize = 0x02000000;
+    let transparent: isize = 0x00000020;
+
+    let new_style = (style & !overlapped_window) | popup;
+    unsafe { SetWindowLongPtrW(hwnd, style_index, new_style) };
+
+    let extended_style_index = WINDOW_LONG_PTR_INDEX::from(-20);
+    let extended_style = unsafe { GetWindowLongPtrW(hwnd, extended_style_index) };
+
+    let new_extended_style = extended_style | composited | transparent;
+    unsafe { SetWindowLongPtrW(hwnd, extended_style_index, new_extended_style) };
+
+    let bb = DWM_BLURBEHIND {
+        dwFlags: 1 | 2,
+        fEnable: BOOL::from(true),
+        hRgnBlur: unsafe { CreateRectRgn(0, 0, -1, -1) },
+        fTransitionOnMaximized: BOOL::from(false),
+    };
+    let _ = unsafe { DwmEnableBlurBehindWindow(hwnd, &bb) };
+}
+
+fn enable_transparency() {
+    let hwnd = unsafe { GetActiveWindow() };
+    let GWL_EXSTYLE = WINDOW_LONG_PTR_INDEX::from(-20);
+    let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+    let WS_EX_LAYERED = 0x00080000;
+    let WS_EX_TRANSPARENT = 0x00000020;
+    let SWP_NOMOVE = 0x0002;
+    let SWP_NOSIZE = 0x0001;
+
+    unsafe {
+        SetWindowLongPtrW(
+            hwnd,
+            GWL_EXSTYLE,
+            ex_style | WS_EX_LAYERED | WS_EX_TRANSPARENT,
+        )
+    };
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            HWND(-1),
+            0,
+            0,
+            0,
+            0,
+            SET_WINDOW_POS_FLAGS::from(SWP_NOMOVE | SWP_NOSIZE),
+        )
+    };
+    let chroma_key = 0x0000FFFF;
+    unsafe {
+        SetLayeredWindowAttributes(
+            hwnd,
+            chroma_key,
+            0,
+            LAYERED_WINDOW_ATTRIBUTES_FLAGS::from(1),
+        )
+    };
+}
 
 impl App {
     pub fn new(states: Vec<State>) -> Self {
         unsafe { SDL_Init(SDL_INIT_EVERYTHING) };
-        let file = File::open("src/data.json").unwrap();
+        let file = File::open("src/vscode_ui.json").unwrap();
 
         let mut bounding_boxes: Vec<UiBoundingBox> = serde_json::from_reader(file).unwrap();
         let mut current_position: Position = Position::new(0.0, 0.0);
 
-        let background_color = Color::RGBA(0, 0, 0, 255);
+        let background_color = Color::RGBA(255, 255, 0, 255);
         let mut i = 0;
         println!("Controllers: {:?}", unsafe { SDL_NumJoysticks() });
         unsafe {
@@ -95,10 +176,11 @@ impl App {
         let video_subsystem = sdl_context.video().unwrap();
 
         let window = video_subsystem
-            .window("uiart", 1280, 800)
+            .window("uiart", 1920, 1080)
             .position_centered()
+            .borderless()
             .resizable()
-            .vulkan()
+            .opengl()
             .build()
             .unwrap();
 
@@ -106,6 +188,8 @@ impl App {
         let mut event_pump = sdl_context.event_pump().unwrap();
         let mut last_angle: Option<f64> = None;
         let mut last_position: Option<Position> = None;
+        enable_transparency();
+
         'running: loop {
             let mut movement: Option<Movement> = None;
 

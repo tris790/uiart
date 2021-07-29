@@ -59,15 +59,8 @@ impl Movement {
 
         let total_angle_scope: f64 = scope_angle.to_radians();
         let half_angle_scope: f64 = total_angle_scope / 2.0;
-        let mut min_scope_angle: f64 = self.angle - half_angle_scope;
-        let mut max_scope_angle: f64 = self.angle + half_angle_scope;
-        // if min_scope_angle < 0.0 {
-        //     min_scope_angle += 360.0;
-        // }
-
-        // if max_scope_angle < 0.0 {
-        //     max_scope_angle += 360.0;
-        // }
+        let min_scope_angle: f64 = self.angle - half_angle_scope;
+        let max_scope_angle: f64 = self.angle + half_angle_scope;
 
         bounding_boxes
             .into_iter()
